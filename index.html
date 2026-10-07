@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Dictado PWA: Susi y su Osa</title>
+    
+    <!-- Configuración para PWA / Mobile Web App -->
+    <meta name="theme-color" content="#f59e0b">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Dictado Susi">
+    
+    <!-- Enlace al Manifest PWA -->
+    <link rel="manifest" href="manifest.json">
+
+    <!-- Estilos Framework Tailwind CSS & Fuentes/Iconos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap');
+        
+        * {
+            touch-action: manipulation;
+        }
+
+        body {
+            font-family: 'Fredoka', cursive, sans-serif;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .bg-classroom {
+            background-image: url('Dictado.png'), url('https://images.unsplash.com/photo-1580582932707-520aed937b7b?auto=format&fit=crop&w=1600&q=80');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+
+        .syllable-card {
+            touch-action: none;
+            transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .syllable-card:active {
+            transform: scale(1.12);
+            z-index: 50;
+        }
+
+        .drop-target {
+            min-width: 3.2rem;
+            height: 3.6rem;
+            border-bottom: 4px solid #3b82f6;
+            transition: all 0.25s ease;
+        }
+
+        .drop-target.active-target {
+            border-bottom-color: #f59e0b;
+            background-color: rgba(254, 243, 199, 0.85);
+            transform: scale(1.03);
+            box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+        }
+
+        .drop-target.correct {
+            border-bottom-color: #10b981;
+            background-color: rgba(209, 250, 229, 0.9);
+            color: #065f46;
+        }
+
+        .punctuation-mark {
+            font-size: 1.1em;
+            color: #0f172a;
+            font-weight: 700;
+        }
+
+        @keyframes pulse-subtle {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.04); }
+        }
+
+        .animate-pulse-subtle {
+            animation: pulse-subtle 2s infinite ease-in-out;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #fcd34d;
+            border-radius: 9999px;
+        }
+    </style>
+</head>
+
+<body class="bg-classroom min-h-screen flex flex-col justify-between p-2 sm:p-4 md:p-6 text-slate-800 backdrop-blur-[1px]">
+
+    <header class="max-w-5xl w-full mx-auto bg-white/80 backdrop-blur-md rounded-2xl p-3 md:p-4 shadow-xl mb-3 flex flex-wrap justify-between items-center gap-3 border border-white/60">
+        <div class="flex items-center gap-3">
+            <div class="bg-gradient-to-tr from-amber-500 to-amber-400 text-white p-3 rounded-2xl shadow-md">
+                <i class="fa-solid fa-graduation-cap text-2xl md:text-3xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl md:text-2xl font-bold text-amber-900 leading-tight">SUSI Y SU OSA</h1>
+                <p class="text-xs md:text-sm text-amber-700 font-semibold">Dictado PWA Interactivo</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2 md:gap-4">
+            <div class="flex items-center gap-2 bg-green-100/90 border border-green-300 px-3 py-1.5 rounded-xl shadow-sm">
+                <i class="fa-solid fa-circle-check text-green-600 text-xl"></i>
+                <div class="text-left">
+                    <span class="block text-[10px] text-green-800 font-bold uppercase tracking-wider">Aciertos</span>
+                    <span id="score-hits" class="text-base md:text-lg font-black text-green-700">0</span>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-2 bg-red-100/90 border border-red-300 px-3 py-1.5 rounded-xl shadow-sm">
+                <i class="fa-solid fa-circle-xmark text-red-500 text-xl"></i>
+                <div class="text-left">
+                    <span class="block text-[10px] text-red-800 font-bold uppercase tracking-wider">Fallas</span>
+                    <span id="score-fails" class="text-base md:text-lg font-black text-red-700">0 / 15</span>
+                </div>
+            </div>
+
+            <button id="btn-install-pwa" class="hidden bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white px-3 py-2 rounded-xl shadow-md transition-all flex items-center gap-2 text-xs font-bold cursor-pointer" title="Instalar App">
+                <i class="fa-solid fa-download text-base"></i>
+                <span class="hidden sm:inline">Instalar App</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-5xl w-full mx-auto flex-1 flex flex-col gap-4">
+        <div class="bg-white/75 backdrop-blur-md rounded-3xl p-4 md:p-8 shadow-2xl border border-white/80 flex-1 flex flex-col justify-between relative overflow-hidden">
+            <div class="flex flex-wrap justify-between items-center mb-4 pb-3 border-b border-amber-200/80 gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="bg-blue-600/90 text-white text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider shadow-sm">
+                        Frase <span id="current-sentence-num">1</span> / 6
+                    </span>
+                    <span class="bg-amber-200/90 text-amber-900 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm">
+                        Palabra <span id="current-word-num">1</span>
+                    </span>
+                </div>
+
+                <button id="btn-repeat-word" class="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-bold py-2.5 px-5 rounded-2xl shadow-lg hover:shadow-xl active:scale-95 transition-all flex items-center gap-2 text-base md:text-lg animate-pulse-subtle cursor-pointer">
+                    <i class="fa-solid fa-volume-high text-xl"></i>
+                    <span>Repetir Palabra</span>
+                </button>
+            </div>
+
+            <div class="my-auto py-6 flex flex-col items-center justify-center min-h-[180px]">
+                <div id="sentence-container" class="flex flex-wrap justify-center items-center gap-x-4 gap-y-6 text-2xl md:text-4xl font-bold text-slate-800 tracking-wide text-center">
+                </div>
+            </div>
+
+            <div id="feedback-banner" class="text-center py-2.5 px-4 rounded-2xl font-bold text-base md:text-lg bg-amber-100/90 text-amber-950 border border-amber-300/80 shadow-sm transition-all min-h-[48px] flex items-center justify-center">
+                Escucha atentamente y arrastra o toca la sílaba o letra correspondiente.
+            </div>
+        </div>
+
+        <div class="bg-white/80 backdrop-blur-md rounded-2xl p-4 shadow-xl border border-white/80">
+            <h2 class="text-center font-bold text-slate-700 mb-3 text-sm md:text-base flex items-center justify-center gap-2">
+                <i class="fa-solid fa-hand-pointer text-amber-500 text-lg"></i>
+                Arrastra o toca la sílaba o letra básica:
+            </h2>
+            <div id="syllables-bank" class="flex flex-wrap justify-center gap-2 md:gap-3 max-w-4xl mx-auto custom-scrollbar">
+            </div>
+        </div>
+    </main>
+
+    <div id="modal-overlay" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md hidden flex items-center justify-center p-4 z-50">
+        <div class="bg-white/95 rounded-3xl p-6 md:p-8 max-w-md w-full text-center shadow-2xl border-4 border-amber-400 relative transform transition-all scale-100">
+            <div id="modal-icon" class="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4 text-4xl text-amber-600 shadow-inner">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+            </div>
+            <h3 id="modal-title" class="text-2xl font-bold text-slate-800 mb-2">¡Atención!</h3>
+            <p id="modal-message" class="text-slate-600 mb-6 text-lg font-medium">Te quedan 3 intentos.</p>
+            <button id="modal-btn" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3.5 px-6 rounded-xl shadow-lg transition-all text-lg active:scale-95 cursor-pointer">
+                Entendido
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Registro del Service Worker externo
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('SW registrado con éxito:', reg.scope))
+                    .catch(err => console.error('Error al registrar SW:', err));
+            });
+        }
+
+        // Evento de instalación PWA
+        let deferredPrompt;
+        const btnInstallPwa = document.getElementById('btn-install-pwa');
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            btnInstallPwa.classList.remove('hidden');
+        });
+
+        btnInstallPwa.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    btnInstallPwa.classList.add('hidden');
+                }
+                deferredPrompt = null;
+            }
+        });
+
+        // Configuración de las lecciones con las frases adaptadas a Susi y su Osa
+        const LESSON_DATA = [
+            {
+                fullSentence: "SUSI AMA A SU OSA.",
+                words: [
+                    { full: "SUSI", targetSyllable: "SU", staticText: "SI", pos: "prefix", punct: "" },
+                    { full: "AMA", targetSyllable: "A", staticText: "MA", pos: "prefix", punct: "" },
+                    { full: "A", targetSyllable: "A", staticText: "", pos: "full", punct: "" },
+                    { full: "SU", targetSyllable: "SU", staticText: "", pos: "full", punct: "" },
+                    { full: "OSA.", targetSyllable: "O", staticText: "SA.", pos: "prefix", punct: "" }
+                ]
+            },
+            {
+                fullSentence: "SUSI ASEA SU OSA.",
+                words: [
+                    { full: "SUSI", targetSyllable: "SU", staticText: "SI", pos: "prefix", punct: "" },
+                    { full: "ASEA", targetSyllable: "A", staticText: "SEA", pos: "prefix", punct: "" },
+                    { full: "SU", targetSyllable: "SU", staticText: "", pos: "full", punct: "" },
+                    { full: "OSA.", targetSyllable: "O", staticText: "SA.", pos: "prefix", punct: "" }
+                ]
+            },
+            {
+                fullSentence: "ESA OSA ES SISI.",
+                words: [
+                    { full: "ESA", targetSyllable: "E", staticText: "SA", pos: "prefix", punct: "" },
+                    { full: "OSA", targetSyllable: "O", staticText: "SA", pos: "prefix", punct: "" },
+                    { full: "ES", targetSyllable: "ES", staticText: "", pos: "full", punct: "" },
+                    { full: "SISI.", targetSyllable: "SI", staticText: "SI.", pos: "prefix", punct: "" }
+                ]
+            },
+            {
+                fullSentence: "ASÍ ES ESA OSA.",
+                words: [
+                    { full: "ASÍ", targetSyllable: "A", staticText: "SÍ", pos: "prefix", punct: "" },
+                    { full: "ES", targetSyllable: "ES", staticText: "", pos: "full", punct: "" },
+                    { full: "ESA", targetSyllable: "E", staticText: "SA", pos: "prefix", punct: "" },
+                    { full: "OSA.", targetSyllable: "O", staticText: "SA.", pos: "prefix", punct: "" }
+                ]
+            },
+            {
+                fullSentence: "SUSI ASEA ESA MESA.",
+                words: [
+                    { full: "SUSI", targetSyllable: "SU", staticText: "SI", pos: "prefix", punct: "" },
+                    { full: "ASEA", targetSyllable: "A", staticText: "SEA", pos: "prefix", punct: "" },
+                    { full: "ESA", targetSyllable: "E", staticText: "SA", pos: "prefix", punct: "" },
+                    { full: "MESA.", targetSyllable: "ME", staticText: "SA.", pos: "prefix", punct: "" }
+                ]
+            },
+            {
+                fullSentence: "SUSI AMASA ESA MASA.",
+                words: [
+                    { full: "SUSI", targetSyllable: "SU", staticText: "SI", pos: "prefix", punct: "" },
+                    { full: "AMASA", targetSyllable: "A", staticText: "MASA", pos: "prefix", punct: "" },
+                    { full: "ESA", targetSyllable: "E", staticText: "SA", pos: "prefix", punct: "" },
+                    { full: "MASA.", targetSyllable: "MA", staticText: "SA.", pos: "prefix", punct: "" }
+                ]
+            }
+        ];
+
+        // Sílabas y letras clave para la lección de S y M
+        const BASE_SYLLABLES = [
+            "SA", "SE", "SI", "SO", "SU",
+            "MA", "ME", "MI", "MO", "MU",
+            "A", "E", "I", "O", "U",
+            "ES"
+        ];
+
+        let currentSentenceIdx = 0;
+        let currentWordIdx = 0;
+        let hits = 0;
+        let fails = 0;
+        let selectedSyllable = null;
+        let selectedVoice = null;
+
+        const sentenceContainer = document.getElementById('sentence-container');
+        const syllablesBank = document.getElementById('syllables-bank');
+        const scoreHitsEl = document.getElementById('score-hits');
+        const scoreFailsEl = document.getElementById('score-fails');
+        const currentSentenceNumEl = document.getElementById('current-sentence-num');
+        const currentWordNumEl = document.getElementById('current-word-num');
+        const feedbackBanner = document.getElementById('feedback-banner');
+        const btnRepeatWord = document.getElementById('btn-repeat-word');
+
+        const modalOverlay = document.getElementById('modal-overlay');
+        const modalTitle = document.getElementById('modal-title');
+        const modalMessage = document.getElementById('modal-message');
+        const modalBtn = document.getElementById('modal-btn');
+
+        function initSpeech() {
+            if ('speechSynthesis' in window) {
+                const loadVoices = () => {
+                    const voices = window.speechSynthesis.getVoices();
+                    selectedVoice = voices.find(v => v.lang.includes('es-MX') || v.lang.includes('es-US') || v.lang.includes('es-419')) 
+                                 || voices.find(v => v.lang.startsWith('es')) 
+                                 || null;
+                };
+                loadVoices();
+                if (speechSynthesis.onvoiceschanged !== undefined) {
+                    speechSynthesis.onvoiceschanged = loadVoices;
+                }
+            }
+        }
+
+        function speak(text, callback = null, rate = 0.60) {
+            if (!('speechSynthesis' in window)) {
+                if (callback) callback();
+                return;
+            }
+
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            if (selectedVoice) utterance.voice = selectedVoice;
+            utterance.lang = 'es-MX';
+            utterance.rate = rate;
+            utterance.pitch = 1.1;
+
+            if (callback) {
+                utterance.onend = callback;
+            }
+
+            window.speechSynthesis.speak(utterance);
+        }
+
+        function initGame() {
+            currentSentenceIdx = 0;
+            currentWordIdx = 0;
+            hits = 0;
+            fails = 0;
+            updateScores();
+            renderSentence();
+            renderSyllablesBank();
+            initSpeech();
+
+            setTimeout(() => {
+                dictateCurrentWord();
+            }, 700);
+        }
+
+        function updateScores() {
+            scoreHitsEl.textContent = hits;
+            scoreFailsEl.textContent = `${fails} / 15`;
+        }
+
+        function dictateCurrentWord() {
+            const currentSentence = LESSON_DATA[currentSentenceIdx];
+            const currentWordObj = currentSentence.words[currentWordIdx];
+            const cleanWord = currentWordObj.full.replace(/[,.]/g, '');
+            speak(cleanWord, null, 0.62);
+            feedbackBanner.textContent = `Escucha la palabra: "${cleanWord}"`;
+        }
+
+        function renderSentence() {
+            const sentenceData = LESSON_DATA[currentSentenceIdx];
+            sentenceContainer.innerHTML = '';
+
+            currentSentenceNumEl.textContent = currentSentenceIdx + 1;
+            currentWordNumEl.textContent = `${currentWordIdx + 1} de ${sentenceData.words.length}`;
+
+            sentenceData.words.forEach((wordObj, wIdx) => {
+                const wordWrapper = document.createElement('div');
+                wordWrapper.className = 'inline-flex items-center gap-0.5 mx-1 my-1 p-1.5 rounded-2xl transition-all';
+
+                const isCurrentWord = wIdx === currentWordIdx;
+                const isCompletedWord = wIdx < currentWordIdx;
+
+                if (isCurrentWord) {
+                    wordWrapper.classList.add('bg-amber-200/90', 'ring-2', 'ring-amber-500', 'shadow-md');
+                }
+
+                if (isCompletedWord) {
+                    wordWrapper.innerHTML = `<span class="text-green-800 font-bold">${wordObj.full}</span>`;
+                } else if (isCurrentWord) {
+                    if (wordObj.pos === 'full') {
+                        wordWrapper.appendChild(createDropTarget(wordObj.targetSyllable, wordObj.punct));
+                    } else if (wordObj.pos === 'prefix') {
+                        wordWrapper.appendChild(createDropTarget(wordObj.targetSyllable, wordObj.punct));
+                        if (wordObj.staticText) {
+                            const staticSpan = document.createElement('span');
+                            staticSpan.className = 'font-bold text-amber-950 tracking-normal';
+                            staticSpan.textContent = wordObj.staticText;
+                            wordWrapper.appendChild(staticSpan);
+                        }
+                    } else if (wordObj.pos === 'suffix') {
+                        if (wordObj.staticText) {
+                            const staticSpan = document.createElement('span');
+                            staticSpan.className = 'font-bold text-amber-950 tracking-normal';
+                            staticSpan.textContent = wordObj.staticText;
+                            wordWrapper.appendChild(staticSpan);
+                        }
+                        wordWrapper.appendChild(createDropTarget(wordObj.targetSyllable, wordObj.punct));
+                    }
+                } else {
+                    const placeholder = document.createElement('span');
+                    placeholder.className = 'text-slate-400 font-mono tracking-widest opacity-60';
+                    placeholder.textContent = '_'.repeat(wordObj.full.replace(/[,.]/g, '').length);
+                    wordWrapper.appendChild(placeholder);
+                }
+
+                sentenceContainer.appendChild(wordWrapper);
+            });
+        }
+
+        function createDropTarget(expectedSyllable, automaticPunctuation = "") {
+            const dropContainer = document.createElement('div');
+            dropContainer.className = 'inline-flex items-center';
+
+            const dropEl = document.createElement('div');
+            dropEl.className = 'drop-target active-target inline-flex items-center justify-center font-bold px-2 mx-0.5 rounded-xl text-amber-950 cursor-pointer';
+            dropEl.dataset.expected = expectedSyllable;
+
+            dropEl.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropEl.classList.add('bg-amber-300');
+            });
+
+            dropEl.addEventListener('dragleave', () => {
+                dropEl.classList.remove('bg-amber-300');
+            });
+
+            dropEl.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropEl.classList.remove('bg-amber-300');
+                const droppedSyllable = e.dataTransfer.getData('text/plain');
+                verifyAnswer(droppedSyllable, dropEl);
+            });
+
+            dropEl.addEventListener('click', () => {
+                if (selectedSyllable) {
+                    verifyAnswer(selectedSyllable, dropEl);
+                    clearSelection();
+                } else {
+                    feedbackBanner.textContent = "Primero toca o arrastra una sílaba de la barra inferior.";
+                }
+            });
+
+            dropContainer.appendChild(dropEl);
+
+            if (automaticPunctuation) {
+                const punctSpan = document.createElement('span');
+                punctSpan.className = 'punctuation-mark';
+                punctSpan.textContent = automaticPunctuation;
+                dropContainer.appendChild(punctSpan);
+            }
+
+            return dropContainer;
+        }
+
+        function renderSyllablesBank() {
+            syllablesBank.innerHTML = '';
+            
+            const currentWordObj = LESSON_DATA[currentSentenceIdx].words[currentWordIdx];
+            const correctTarget = currentWordObj.targetSyllable;
+
+            let options = new Set([correctTarget]);
+            while (options.size < Math.min(8, BASE_SYLLABLES.length)) {
+                const randomItem = BASE_SYLLABLES[Math.floor(Math.random() * BASE_SYLLABLES.length)];
+                options.add(randomItem);
+            }
+
+            const optionsArray = Array.from(options).sort(() => Math.random() - 0.5);
+
+            optionsArray.forEach(syllable => {
+                const card = document.createElement('button');
+                card.className = 'syllable-card bg-amber-400 hover:bg-amber-500 text-amber-950 font-bold text-xl md:text-2xl px-4 py-2.5 rounded-2xl shadow-md border-b-4 border-amber-600 active:border-b-0 active:translate-y-1 transition-all cursor-pointer';
+                card.textContent = syllable;
+                card.draggable = true;
+
+                card.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', syllable);
+                    card.classList.add('opacity-50');
+                });
+
+                card.addEventListener('dragend', () => {
+                    card.classList.remove('opacity-50');
+                });
+
+                card.addEventListener('click', () => {
+                    document.querySelectorAll('.syllable-card').forEach(c => c.classList.remove('ring-4', 'ring-blue-500'));
+                    if (selectedSyllable === syllable) {
+                        selectedSyllable = null;
+                    } else {
+                        selectedSyllable = syllable;
+                        card.classList.add('ring-4', 'ring-blue-500');
+                        feedbackBanner.textContent = `Seleccionaste "${syllable}". Toca la casilla vacía en la palabra.`;
+                    }
+                });
+
+                syllablesBank.appendChild(card);
+            });
+        }
+
+        function clearSelection() {
+            selectedSyllable = null;
+            document.querySelectorAll('.syllable-card').forEach(c => c.classList.remove('ring-4', 'ring-blue-500'));
+        }
+
+        function verifyAnswer(syllable, dropTargetEl) {
+            const expected = dropTargetEl.dataset.expected;
+
+            if (syllable === expected) {
+                hits++;
+                updateScores();
+                dropTargetEl.textContent = syllable;
+                dropTargetEl.classList.remove('active-target');
+                dropTargetEl.classList.add('correct');
+
+                const praises = ["¡Muy bien!", "¡Correcto!", "¡Excelente!"];
+                const randomPraise = praises[Math.floor(Math.random() * praises.length)];
+                
+                feedbackBanner.textContent = randomPraise;
+                speak(randomPraise, () => {
+                    advanceGame();
+                }, 0.65);
+
+            } else {
+                fails++;
+                updateScores();
+                
+                feedbackBanner.textContent = "No, no. Inténtalo de nuevo.";
+                speak("No, no", null, 0.65);
+
+                dropTargetEl.classList.add('animate-bounce');
+                setTimeout(() => dropTargetEl.classList.remove('animate-bounce'), 600);
+
+                checkFailLimits();
+            }
+        }
+
+        function advanceGame() {
+            const currentSentence = LESSON_DATA[currentSentenceIdx];
+
+            if (currentWordIdx < currentSentence.words.length - 1) {
+                currentWordIdx++;
+                renderSentence();
+                renderSyllablesBank();
+                dictateCurrentWord();
+            } else {
+                feedbackBanner.textContent = `¡Frase completada! Escucha la frase completa.`;
+                currentWordIdx++;
+                renderSentence();
+
+                setTimeout(() => {
+                    speak(`¡Muy bien! Lees: ${currentSentence.fullSentence}`, () => {
+                        if (currentSentenceIdx < LESSON_DATA.length - 1) {
+                            currentSentenceIdx++;
+                            currentWordIdx = 0;
+                            renderSentence();
+                            renderSyllablesBank();
+                            dictateCurrentWord();
+                        } else {
+                            speak("¡Felicidades! Has completado todas las frases perfectamente.", () => {
+                                showModal("¡Felicitaciones!", "¡Has completado toda la lección de Susi y su osa!", () => {
+                                    initGame();
+                                });
+                            }, 0.60);
+                        }
+                    }, 0.55);
+                }, 400);
+            }
+        }
+
+        function checkFailLimits() {
+            if (fails === 12) {
+                const msg = "Te quedan tres intentos";
+                speak(msg, null, 0.65);
+                showModal("¡Cuidado!", msg);
+            } else if (fails === 13) {
+                const msg = "Te quedan dos intentos";
+                speak(msg, null, 0.65);
+                showModal("¡Cuidado!", msg);
+            } else if (fails === 14) {
+                const msg = "Te queda un intento";
+                speak(msg, null, 0.65);
+                showModal("¡Atención!", msg);
+            } else if (fails >= 15) {
+                const msg = "Has alcanzado el límite de intentos. Vamos a reiniciar el juego.";
+                speak(msg, () => {
+                    showModal("Juego Reiniciado", "Has alcanzado 15 fallas. ¡Volvamos a practicar desde el principio!", () => {
+                        initGame();
+                    });
+                }, 0.65);
+            }
+        }
+
+        function showModal(title, message, onClose = null) {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            modalOverlay.classList.remove('hidden');
+
+            const handleClose = () => {
+                modalOverlay.classList.add('hidden');
+                modalBtn.removeEventListener('click', handleClose);
+                if (onClose) onClose();
+            };
+
+            modalBtn.addEventListener('click', handleClose);
+        }
+
+        btnRepeatWord.addEventListener('click', () => {
+            dictateCurrentWord();
+        });
+
+        window.onload = () => {
+            initGame();
+        };
+    </script>
+</body>
+</html>
